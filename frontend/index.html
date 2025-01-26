@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Recommending Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #444;
+        }
+        .chat-box {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        .chat-message {
+            margin: 10px 0;
+            padding: 8px;
+            border-radius: 5px;
+            clear: both;
+            word-wrap: break-word;
+        }
+        .user {
+            text-align: right;
+            color: #007BFF;
+            background-color: #e9f2ff;
+            float: right;
+        }
+        .bot {
+            text-align: left;
+            color: #28a745;
+            background-color: #e2f9e1;
+            float: left;
+        }
+        .input-container {
+            display: flex;
+            margin-top: 10px;
+        }
+        .input-container input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .input-container button {
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .input-container button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Music Recommending Chatbot</h1>
+        <div class="chat-box" id="chat-box">
+            <div class="chat-message bot">Hello! How's your day been so far?</div>
+        </div>
+        <div class="input-container">
+            <input type="text" id="user-input" placeholder="Type your message here...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let currentEmotion = null;
+        let userRegion = null;
+        let userMusicPreference = null;
+        let askingForRegion = false;
+        let askingForMusic = false;
+        let conversationStarted = false;
+
+        function sendMessage() {
+            const userInput = document.getElementById('user-input').value;
+            if (!userInput.trim()) return;
+
+            displayMessage("user", userInput);
+            document.getElementById('user-input').value = '';
+
+            if (!conversationStarted) {
+                conversationStarted = true;
+                askForRegion();
+                return;
+            }
+
+            if (askingForRegion) {
+                userRegion = userInput;
+                displayMessage("bot", `Great! I've noted you're from ${userRegion}. What kind of music do you enjoy? (e.g., Pop, Rock, Classical, Hip-Hop, Electronic, etc.)`);
+                askingForRegion = false;
+                askingForMusic = true;
+                return;
+            }
+
+            if (askingForMusic) {
+                userMusicPreference = userInput;
+                displayMessage("bot", `Awesome! I'll find some music for you.`);
+                askingForMusic = false;
+            }
+
+            fetch('http://127.0.0.1:5000/analyze_sentiment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: userInput })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    displayMessage("bot", "Error: " + data.error);
+                } else {
+                    currentEmotion = data.sentiment; // Directly use the mood from the backend
+                    performAdditionalActions();
+
+                    if (userRegion && userMusicPreference && currentEmotion) {
+                        const userData = {
+                            mood: currentEmotion,
+                            region: userRegion,
+                            preference: userMusicPreference
+                        };
+                        console.log("Sending user data:", userData);
+                        fetch('http://127.0.0.1:5000/get_music', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(userData)
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                displayMessage("bot", "Error: " + data.error);
+                            } else if (data.songs && data.songs.length > 0) {
+                                let message = "Here are some songs you might like:\n";
+                                data.songs.forEach(song => {
+                                    message += `- ${song.song_title} by ${song.artist}\n`;
+                                });
+                                displayMessage("bot", message);
+                            } else {
+                                displayMessage("bot", "No songs found matching your criteria. Try loosening your search criteria.");
+                            }
+                        })
+                        .catch(error => {
+                            console.error("Error:", error);
+                            displayMessage("bot", "An error occurred fetching music.");
+                        });
+                        currentEmotion = null;
+                        userRegion = null;
+                        userMusicPreference = null;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                displayMessage("bot", "An error occurred.");
+            });
+        }
+
+        function displayMessage(sender, message) {
+            const chatBox = document.getElementById('chat-box');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${sender}`; // Corrected template literal
+            messageDiv.textContent = message;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function performAdditionalActions() {
+            if (currentEmotion === "Happy") {
+                displayMessage("bot", "I'm glad to hear that you're feeling Happy!");
+            } else if (currentEmotion === "Sad") {
+                displayMessage("bot", "I'm sorry to hear that you're feeling Sad.");
+            } else if (currentEmotion === "Neutral") {
+                displayMessage("bot", "I understand that you're feeling Neutral.");
+            } else if (currentEmotion === "ERROR") {
+                displayMessage("bot", "There was an error processing your request.");
+            }
+        }
+
+        function askForRegion() {
+            displayMessage("bot", "By the way, where are you from?(eg, Europe, North America, Asia, Africa, Australia/Oceania, South America, etc)");
+            askingForRegion = true;
+        }
+    </script>
+</body>
+</html>
